@@ -1,0 +1,14 @@
+
+functions:
+
+  #
+  # SHOWCASE ENDPOINT
+  #
+
+  hello:
+    handler: routes/handler.hello
+    events:
+      - http:
+          path: hello
+          method: GET
+          cors: ${self:custom.corsConfig}

@@ -1,0 +1,27 @@
+# IDE
+
+.idea/
+
+# NodeJs
+
+/npm-debug.log
+node_modules
+/config/config.development.js
+/typings
+/coverage
+/html-report
+
+# Build
+.nyc_output
+
+
+# dist
+dist/*
+!dist/img
+!dist/fonts
+!dist/images
+!dist/vendor
+
+# Serverless
+
+.serverless

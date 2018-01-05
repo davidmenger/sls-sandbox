@@ -1,0 +1,64 @@
+FORMAT: 1A
+HOST: https://api.pragonauts.cloud/
+
+#  API
+
+# Data Structures
+
+## Collection (object)
+
++ count: 10 (number, required) - count of items in response
++ hasNext: false (boolean, required) - has next page
+
+## Example (object)
+
++ name: `hello` (string, required) - count of items in response
+
+# Group Example
+
+## Example Collection [/example]
+
+### Get all  [GET /example{?limit,offset}]
+
++ Parameters
+    + offset (number, optional) - number of items to skip
+    + limit (number, optional) - number of items to show (zero for infinity)
+
++ Request fetch categories
+    + Headers
+
+            Authorization: abcdefgh
+
++ Response 200 (application/json)
+    + Attributes (object)
+        + count: 10 (number, required) - count of items in response
+        + hasNext: false (boolean, required) - has next page
+        + data (array[Example], required)
+
+## Example [/example/{id}]
+
++ Parameters
+    + id (string|number, required) - identifier
+
+### Update example [PUT]
+
++ Request
+    + Attributes (object)
+        + name: 1234 (number, required, nullable)
+
++ Response 200 (application/json)
+    + Attributes (Example)
+
+### Get example by id [GET /example/{id}]
+
++ Parameters
+    + id (string|number, required) - identifier
+
++ Request fetch categories
+    + Headers
+
+            Authorization: abcdefgh
+
++ Response 200 (application/json)
+    + Attributes (Example)
+

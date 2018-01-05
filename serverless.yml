@@ -1,0 +1,240 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: project-name
+
+plugins:
+  - serverless-s3-assets
+  - serverless-plugin-split-stacks
+
+custom:
+  stage: ${opt:stage}
+  company: company-tag
+  accountIds:
+    staging: 1
+    production: 1
+  accountId: ${self:custom.accountIds.${self:custom.stage}}
+  redirects:
+    production: ''
+    staging: ''
+  bucket:
+    staging: test.domain.cloud
+    production: production-domain.com
+  certificate:
+    staging: arn:aws:acm:us-east-1:1:certificate/e
+    production: arn:aws:acm:us-east-1:1:certificate/e
+  prefix: ${self:service}-${self:custom.stage}
+  cors: https://${self:custom.bucket.${self:custom.stage}}
+  certArn: ${self:custom.certificate.${self:custom.stage}}
+  redirectBucket: ${self:custom.redirects.${self:custom.stage}}
+  corsConfig:
+    allowCredentials: true
+    origins:
+      - ${self:custom.cors}
+  s3Assets:
+    dist:
+      bucket: ${self:custom.bucket.${self:custom.stage}}
+      isPublic: true
+      cacheTime: 300
+      contentType: text/html
+
+provider:
+  name: aws
+  runtime: nodejs6.10
+  region: eu-central-1
+  stage: staging
+
+  memorySize: 512
+  timeout: 10
+
+  stackTags: # Optional CF stack tags
+    Company: ${self:custom.company}
+
+  environment:
+    PREFIX: ${self:custom.prefix}
+    BUCKET: ${self:custom.s3Assets.dist.bucket}
+    NODE_ENV: ${self:custom.stage}
+    CORS: ${self:custom.cors}
+    REGION: ${self:provider.region}
+    ACCOUNT_ID: ${self:custom.accountId}
+    LOGZIO_TOKEN: ''
+    RAVEN_URL: ''
+    APP_SECRET: 17BA793FF6C9E9D54A08546753EDD95F9ED436B8E84FA6F3A72342F62CF65FCE
+
+  iamRoleStatements: # permissions for all of your functions can be set here
+    - Effect: Allow
+      Action: # Gives permission to DynamoDB tables in a specific region
+        - dynamodb:DescribeTable
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:*
+    - Effect: Allow
+      Action: # Gives permission to DynamoDB tables in a specific region
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.prefix}*
+    - Effect: "Allow"
+      Action:
+        - "s3:ListBucket"
+      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket"} ] ] } # You can put CloudFormation syntax in here.  No one will judge you.  Remember, this all gets translated to CloudFormation.
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+      Resource:
+        Fn::Join:
+          - ""
+          - - "arn:aws:s3:::"
+            - "Ref" : "ServerlessDeploymentBucket"
+    - Effect: "Allow"
+      Action:
+        - "s3:PutObject"
+        - "s3:GetObject"
+        - "s3:GetObjectAcl"
+        - "s3:DeleteObject"
+        - "s3:PutObjectAcl"
+      Resource:
+        - "arn:aws:s3:::${self:custom.bucket.${self:custom.stage}}"
+        - "arn:aws:s3:::${self:custom.bucket.${self:custom.stage}}/*"
+    - Effect: Allow
+      Action:
+        - "s3:*"
+      Resource:
+        - "arn:aws:s3:::${self:custom.prefix}-deployment-bucket"
+        - "arn:aws:s3:::${self:custom.prefix}-deployment-bucket/*"
+
+package: ${file(./config/serverless.package.yml):package}
+functions: ${file(./routes/serverless.functions.yml):functions}
+
+resources:
+  Conditions:
+    ProductionResources:
+      Fn::Equals:
+        - ${opt:stage}
+        - production
+    DeployRedirectBucket:
+      Fn::Not:
+        - Fn::Equals:
+          - ${self:custom.redirectBucket}
+          - ''
+  Resources:
+
+    ContentBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucket.${self:custom.stage}}
+        AccessControl: PublicRead
+        CorsConfiguration:
+          CorsRules:
+            - AllowedMethods:
+                - GET
+              AllowedOrigins:
+                - '*'
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: error.html
+
+    RedirectBucket:
+      Type: AWS::S3::Bucket
+      Condition: DeployRedirectBucket
+      Properties:
+        BucketName: ${self:custom.redirectBucket}
+        AccessControl: PublicRead
+        WebsiteConfiguration:
+          RedirectAllRequestsTo:
+            HostName: ${self:custom.bucket.${self:custom.stage}}
+            Protocol: https
+
+    ## Specifying the CloudFront Distribution to server your Web Application
+    WebAppCloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      DependsOn:
+        - ApiGatewayRestApi
+      Properties:
+        DistributionConfig:
+          PriceClass: PriceClass_100
+          Origins:
+            - DomainName: ${self:custom.bucket.${self:custom.stage}}.s3-website.${self:provider.region}.amazonaws.com
+              ## An identifier for the origin which must be unique within the distribution
+              Id: WebApp
+              CustomOriginConfig:
+                HTTPPort: 80
+                HTTPSPort: 443
+                OriginProtocolPolicy: http-only
+              ## In case you want to restrict the bucket access use S3OriginConfig and remove CustomOriginConfig
+              # S3OriginConfig:
+              #   OriginAccessIdentity: origin-access-identity/cloudfront/E127EXAMPLE51Z
+            - DomainName:
+                'Fn::Join':
+                  - ''
+                  - - Ref: ApiGatewayRestApi
+                    - '.execute-api.${self:provider.region}.amazonaws.com'
+              Id: ApiBackend
+              OriginPath: /${self:custom.stage}
+              CustomOriginConfig:
+                HTTPPort: 80
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+          Enabled: 'true'
+          ## Uncomment the following section in case you are using a custom domain
+          Aliases:
+            - ${self:custom.bucket.${self:custom.stage}}
+          DefaultRootObject: index.html
+          ## Since the Single Page App is taking care of the routing we need to make sure ever path is served with index.html
+          ## The only exception are files that actually exist e.h. app.js, reset.css
+          CustomErrorResponses:
+            - ErrorCode: 404
+              ResponseCode: 404
+              ResponsePagePath: /error.html
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            CachedMethods:
+              - GET
+              - HEAD
+            MinTTL: 60
+            ## The origin id defined above
+            TargetOriginId: WebApp
+            ## Defining if and how the QueryString and Cookies are forwarded to the origin which in this case is S3
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+              Headers:
+                - Origin
+                - Access-Control-Request-Method
+                - Access-Control-Request-Headers
+            ## The protocol that users can use to access the files in the origin. To allow HTTP use `allow-all`
+            ViewerProtocolPolicy: redirect-to-https
+            # ViewerProtocolPolicy: allow-all
+
+          ## The certificate to use when viewers use HTTPS to request objects.
+          ViewerCertificate:
+            # CloudFrontDefaultCertificate: true
+            AcmCertificateArn: ${self:custom.certArn}
+            SslSupportMethod: sni-only
+          ## Uncomment the following section in case you want to enable logging for CloudFront requests
+          # Logging:
+          #   IncludeCookies: 'false'
+          #   Bucket: mylogs.s3.amazonaws.com
+          #   Prefix: myprefix
+
+  ## In order to print out the hosted domain via `serverless info` we need to define the DomainName output for CloudFormation
+  Outputs:
+    WebAppCloudFrontDistributionOutput:
+      Description: Cloudfront url
+      Value:
+        'Fn::GetAtt': [ WebAppCloudFrontDistribution, DomainName ]
